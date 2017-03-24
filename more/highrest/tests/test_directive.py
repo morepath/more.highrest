@@ -50,6 +50,9 @@ class Collection(object):
         self.offset = offset
         self.limit = limit
 
+    def clone(self, limit, offset):
+        return Collection(limit, offset)
+
     def add(self, data):
         database.add(data)
 
@@ -69,13 +72,13 @@ class Collection(object):
         offset = self.offset - self.limit
         if offset < 0:
             offset = 0
-        return Collection(offset, self.limit)
+        return self.clone(offset, self.limit)
 
     def next(self):
         if self.offset + self.limit >= self.count():
             return None
         offset = self.offset + self.limit
-        return Collection(offset, self.limit)
+        return self.clone(offset, self.limit)
 
 
 def test_basic_cases():
@@ -148,6 +151,8 @@ def test_batching():
 
     r = client.get('/collection')
 
+    # note that to make these tests consistently succeed you
+    # need Morepath 0.19+
     assert r.json == {
         'results': [{'id': 0, 'title': "Title 0"},
                     {'id': 1, 'title': "Title 1"}],
