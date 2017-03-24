@@ -1,19 +1,6 @@
-from more.highrest import HighRestApp
+from more.highrest import HighRestApp, ItemBase, CollectionBase
 
 from webtest import TestApp as Client
-
-
-class Item(object):
-    def __init__(self, collection, id, title):
-        self.collection = collection
-        self.id = id
-        self.title = title
-
-    def update(self, data):
-        self.title = data['title']
-
-    def remove(self):
-        self.collection.items[self.id] = None
 
 
 class Database(object):
@@ -45,7 +32,20 @@ def setup_function(function):
     database.clear()
 
 
-class Collection(object):
+class Item(ItemBase):
+    def __init__(self, collection, id, title):
+        self.collection = collection
+        self.id = id
+        self.title = title
+
+    def update(self, data):
+        self.title = data['title']
+
+    def remove(self):
+        self.collection.items[self.id] = None
+
+
+class Collection(CollectionBase):
     def __init__(self, offset, limit):
         self.offset = offset
         self.limit = limit
@@ -65,20 +65,6 @@ class Collection(object):
 
     def count(self):
         return len(database.items)
-
-    def previous(self):
-        if self.offset == 0:
-            return None
-        offset = self.offset - self.limit
-        if offset < 0:
-            offset = 0
-        return self.clone(offset, self.limit)
-
-    def next(self):
-        if self.offset + self.limit >= self.count():
-            return None
-        offset = self.offset + self.limit
-        return self.clone(offset, self.limit)
 
 
 def test_basic_cases():
