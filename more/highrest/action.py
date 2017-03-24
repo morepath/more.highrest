@@ -17,8 +17,13 @@ class CollectionAction(dectate.Composite):
         # GET collection
         # FIXME: next, previous, count, page nr
         def collection_get(self, request):
-            return [request.view(item) for item in
-                    self.query()]
+            return {
+                'results': [request.view(item) for item in self.query()],
+                'next': request.link(self.next()),
+                'previous': request.link(self.previous()),
+                'count': self.count()
+            }
+
         yield JsonAction(model=self.collection,
                          permission=None), collection_get
 

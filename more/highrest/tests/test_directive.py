@@ -16,7 +16,7 @@ class Item(object):
         self.collection.items[self.id] = None
 
 
-class Collection(object):
+class Database(object):
     id_counter = 0
 
     def __init__(self):
@@ -27,33 +27,68 @@ class Collection(object):
         self.items.append(Item(self, id, **data))
         self.id_counter += 1
 
-    def query(self):
-        return self.items
-
-    @staticmethod
-    def load(request):
-        return {'title': request.json['title']}
-
     def get(self, id):
         try:
             return self.items[id]
         except IndexError:
             return None
 
+    def clear(self):
+        self.id_counter = 0
+        self.items = []
+
+
+database = Database()
+
+
+def setup_function(function):
+    database.clear()
+
+
+class Collection(object):
+    def __init__(self, offset, limit):
+        self.offset = offset
+        self.limit = limit
+
+    def add(self, data):
+        database.add(data)
+
+    def query(self):
+        return database.items[self.offset:self.offset + self.limit]
+
+    @staticmethod
+    def load(request):
+        return {'title': request.json['title']}
+
+    def count(self):
+        return len(database.items)
+
+    def previous(self):
+        if self.offset == 0:
+            return None
+        offset = self.offset - self.limit
+        if offset < 0:
+            offset = 0
+        return Collection(offset, self.limit)
+
+    def next(self):
+        if self.offset + self.limit >= self.count():
+            return None
+        offset = self.offset + self.limit
+        return Collection(offset, self.limit)
+
 
 def test_basic_cases():
     class App(HighRestApp):
         pass
 
-    collection = Collection()
-
     @App.collection(path='/collection', collection=Collection)
-    def get_collection():
-        return collection
+    def get_collection(offset=0, limit=10):
+        return Collection(offset, limit)
 
     @App.item(path='/collection/{id}', model=Item, collection=Collection)
     def get_item(id=0):
-        return collection.get(id)
+        return database.get(id)
 
     @App.json(model=Item)
     def item_get(self, request):
@@ -61,13 +96,24 @@ def test_basic_cases():
 
     App.commit()
     client = Client(App())
+
     r = client.get('/collection')
 
-    assert r.json == []
+    assert r.json == {
+        'results': [],
+        'next': None,
+        'previous': None,
+        'count': 0
+    }
 
     r = client.post_json('/collection', {'title': "hello world"}, status=201)
 
-    assert r.json == [{'id': 0, 'title': "hello world"}]
+    assert r.json == {
+        'results': [{'id': 0, 'title': "hello world"}],
+        'next': None,
+        'previous': None,
+        'count': 1
+    }
 
     r = client.get('/collection/0')
     assert r.json == {'id': 0, 'title': 'hello world'}
@@ -76,3 +122,56 @@ def test_basic_cases():
     assert r.json == {'id': 0, 'title': 'bye world'}
 
     r = client.delete('/collection/0', status=204)
+
+
+def test_batching():
+    class App(HighRestApp):
+        pass
+
+    for i in range(10):
+        database.add({'title': "Title %s" % i})
+
+    @App.collection(path='/collection', collection=Collection)
+    def get_collection(offset=0, limit=2):
+        return Collection(offset, limit)
+
+    @App.item(path='/collection/{id}', model=Item, collection=Collection)
+    def get_item(id=0):
+        return database.get(id)
+
+    @App.json(model=Item)
+    def item_get(self, request):
+        return {'id': self.id, 'title': self.title}
+
+    App.commit()
+    client = Client(App())
+
+    r = client.get('/collection')
+
+    assert r.json == {
+        'results': [{'id': 0, 'title': "Title 0"},
+                    {'id': 1, 'title': "Title 1"}],
+        'next': 'http://localhost/collection?limit=2&offset=2',
+        'previous': None,
+        'count': 10
+    }
+
+    r = client.get('/collection?offset=2')
+
+    assert r.json == {
+        'results': [{'id': 2, 'title': "Title 2"},
+                    {'id': 3, 'title': "Title 3"}],
+        'next': 'http://localhost/collection?limit=2&offset=4',
+        'previous': 'http://localhost/collection?limit=2&offset=0',
+        'count': 10
+    }
+
+    r = client.get('/collection?offset=8')
+
+    assert r.json == {
+        'results': [{'id': 8, 'title': "Title 8"},
+                    {'id': 9, 'title': "Title 9"}],
+        'next': None,
+        'previous': 'http://localhost/collection?limit=2&offset=6',
+        'count': 10
+    }
