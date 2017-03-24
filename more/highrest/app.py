@@ -5,3 +5,4 @@ from . import action
 
 class App(morepath.App):
     collection = directive(action.CollectionAction)
+    item = directive(action.ItemAction)

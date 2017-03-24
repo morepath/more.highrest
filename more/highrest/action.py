@@ -1,22 +1,21 @@
 import dectate
-from morepath.directive import JsonAction, PathAction
+from morepath.directive import JsonAction, PathCompositeAction
 
 
 class CollectionAction(dectate.Composite):
-    def __init__(self, path, collection, load, dump):
+    def __init__(self, path, collection):
         self.path = path
         self.collection = collection
-        self.load = load
-        self.dump = dump
 
     def actions(self, obj):
         # FIXME: permission
 
         # collection path
         # FIXME: other path parameters such as variables, converters, etc
-        yield PathAction(model=self.collection, path=self.path), obj
+        yield PathCompositeAction(model=self.collection, path=self.path), obj
 
         # GET collection
+        # FIXME: next, previous, count, page nr
         def collection_get(self, request):
             return [request.view(item) for item in
                     self.query()]
@@ -31,25 +30,22 @@ class CollectionAction(dectate.Composite):
             def set_status(request):
                 request.status = 201
             return request.view(self)
-        yield JsonAction(model=self.collection, load=self.load,
+        yield JsonAction(model=self.collection, load=self.collection.load,
                          request_method='POST',
                          permission=None), collection_post
 
-        dump = self.dump
 
-        # item path
-        def get_item(self, id):
-            return obj().get(id)
+class ItemAction(dectate.Composite):
+    def __init__(self, path, model, collection):
+        self.path = path
+        self.model = model
+        self.collection = collection
 
-        yield PathAction(model=self.collection.model,
-                         path=self.path + '/{id}'), get_item
+    def actions(self, obj):
+        # FIXME: permission
 
-        # GET item
-        def item_get(self, request):
-            return dump(self, request)
-
-        yield (JsonAction(model=self.collection.model, permission=None),
-               item_get)
+        yield PathCompositeAction(model=self.model,
+                                  path=self.path), obj
 
         # DELETE item
         def item_delete(self, request):
@@ -57,15 +53,15 @@ class CollectionAction(dectate.Composite):
             def set_status(request):
                 request.status = 204
                 del request.headers['Content-Type']
-            obj().remove(self)
+            self.remove()
 
-        yield JsonAction(model=self.collection.model, request_method='DELETE',
+        yield JsonAction(model=self.model, request_method='DELETE',
                          permission=None), item_delete
 
         # PUT item
         def item_put(self, request, data):
-            obj().update(self, data)
+            self.update(data)
             return request.view(self)
 
-        yield JsonAction(model=self.collection.model, load=self.load,
+        yield JsonAction(model=self.model, load=self.collection.load,
                          request_method='PUT', permission=None), item_put
